@@ -1,113 +1,59 @@
-# LinkedIn Profile Scraper API
+# LinkedIn Profile API
 
-This project provides a robust, browserless API for retrieving public LinkedIn profile data as structured JSON. It directly communicates with LinkedIn's internal HTTP endpoints.
+A blazing-fast, browserless REST API that reverse-engineers LinkedIn's internal endpoints to extract structured profile data (Experience, Education, Skills, etc.) in milliseconds.
 
-## Overview
-This API takes a LinkedIn profile URL (e.g., `https://www.linkedin.com/in/example/`), parses the profile identifier, and uses LinkedIn's internal Voyager REST API to retrieve and structure the profile's data, including basic info, experience, education, skills, certifications, and languages.
+## 🚀 Technical Highlights
 
-**Note on PhantomBuster**: The hiring assignment referenced PhantomBuster as a functional benchmark. This implementation operates entirely independently. It does not use PhantomBuster, call PhantomBuster APIs, or depend on it in any way. All data is retrieved directly from LinkedIn via pure HTTP requests.
+Built to production standards, designed to survive LinkedIn's dynamic API and strict rate limits:
+- **Lightning Fast**: Uses **HTTP Keep-Alive** pooling and **`orjson`** (Rust-based) to parse massive 500KB+ JSON graphs instantly.
+- **O(1) Graph Parsing**: Profile entities are pre-grouped by type in a single pass (`defaultdict`), turning slow nested array scans into instant O(1) lookups.
+- **Fault-Tolerant**: Implements **Exponential Backoff (`tenacity`)** to automatically retry transient network drops, while smartly halting on 401/429s to prevent account bans.
+- **Protected**: Native rate-limiting (`slowapi`) and TTL caching (`cachetools`) defend against abuse and credential exhaustion.
+- **Crash-Proof**: Safely intercepts silent HTML CAPTCHA traps and explicitly handles unexpected `null` schemas without throwing Exceptions.
 
-## Architecture
+## ⚙️ Reverse Engineering Approach
+Instead of relying on heavy, slow headless browsers (Selenium/Puppeteer), this API acts as a direct HTTP client. It intercepts the internal Voyager API (`/voyager/api/identity/dash/profiles`) using hijacked session cookies (`li_at` and `JSESSIONID`), bypassing HTML scraping entirely to receive highly-structured JSON directly from LinkedIn's backend.
 
-The system is built on a clean, production-oriented backend architecture:
-- **FastAPI**: Provides a fast, modern API layer with automatic validation.
-- **Pydantic**: Validates incoming requests and structures the outgoing JSON response.
-- **HTTPX**: Used for asynchronous, direct HTTP communication with LinkedIn endpoints.
-- **Cachetools**: Provides an in-memory TTL caching mechanism to reduce redundant external calls.
-- **SlowAPI**: Implements robust rate limiting to protect the endpoints.
+## 🛠️ Quick Start
 
-**Request Flow:**
-`Client -> POST /profile -> Validation -> Rate Limiter -> Cache Check -> LinkedIn HTTP Client -> Voyager API -> Graph Parser -> Cache Store -> Normalized JSON Response`
-
-## Reverse Engineering Approach
-
-The core requirement of this project was to avoid using a browser (Selenium, Playwright, Puppeteer). 
-
-### Endpoint Selection
-Through HTTP inspection, we bypassed the legacy `/voyager/api/identity/profiles/{id}/profileView` endpoint in favor of the modern, internal dashboard endpoint:
-`https://www.linkedin.com/voyager/api/identity/dash/profiles`
-
-This endpoint is superior because it returns highly structured graph JSON and responds to specific `decorationId` query parameters to retrieve full profile entities.
-
-### Authentication
-LinkedIn requires an active session to query this endpoint. The HTTP client injects:
-- `li_at`: The primary authentication session cookie.
-- `JSESSIONID`: The session identifier.
-- `csrf-token`: A required header extracted directly from the `JSESSIONID`.
-
-### Parser Logic
-Rather than relying on fixed indices (which break easily), our parser treats the LinkedIn response as an entity graph:
-1. It builds an index `entityUrn -> entity` from the `included` array.
-2. It resolves root references (like `*experience`, `*education`) by traversing the URNs.
-3. This creates a highly resilient parser that handles missing fields, partial responses, and unexpected ordering gracefully.
-
-## Setup Instructions
-
-### Environment Variables
-Copy the sample environment file and add your LinkedIn credentials:
+### 1. Setup Environment
 ```bash
 cp .env.example .env
 ```
-Ensure you populate `LINKEDIN_LI_AT` and `LINKEDIN_JSESSIONID` using values from a logged-in browser session. 
-*Note: Do NOT commit this `.env` file or hardcode these credentials anywhere.*
+Add your LinkedIn session cookies (`LINKEDIN_LI_AT` and `LINKEDIN_JSESSIONID`) to the `.env` file. Do NOT commit this file to GitHub.
 
-### Running Locally
-You can run the API locally using `uvicorn`:
+### 2. Run the Server
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
+*Docker support is included via the `Dockerfile` for seamless deployment.*
 
-## Testing
-Unit and integration tests are provided using `pytest` and mocked JSON responses to avoid hitting LinkedIn during test runs.
+## 📖 API Usage
+
+**POST** `/profile`
 ```bash
-pytest tests/
-```
-
-## API Documentation
-
-### `POST /profile`
-Retrieves a structured LinkedIn profile.
-
-**Request:**
-```json
-{
-  "url": "https://www.linkedin.com/in/example/"
-}
+curl -X POST "http://127.0.0.1:8000/profile" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://www.linkedin.com/in/williamhgates"}'
 ```
 
 **Response (200 OK):**
 ```json
 {
   "profile": {
-    "name": "John Doe",
-    "headline": "Software Engineer",
-    "location": "San Francisco, CA",
-    "about": "Passionate about building scalable systems.",
-    "profile_url": "https://www.linkedin.com/in/example",
-    "profile_image": "https://media.licdn.com/dms/image/..."
+    "name": "Bill Gates",
+    "headline": "Co-chair, Bill & Melinda Gates Foundation",
+    "location": "Seattle, WA"
   },
   "experience": [...],
   "education": [...],
-  "skills": [...],
-  "certifications": [...],
-  "languages": [...]
+  "skills": [...]
 }
 ```
 
-### `GET /health`
-Health check endpoint.
-
-## Security & Reliability
-
-- **Rate Limiting**: The public API endpoints are protected using `slowapi`. The default limit is `10 requests/minute` (configurable via `RATE_LIMIT_DEFAULT`).
-- **Caching**: Successful profile retrievals are cached in-memory for 1 hour by default (configurable via `PROFILE_CACHE_TTL`). Cached data may be stale until the TTL expires, but this significantly reduces the load on LinkedIn and lowers the risk of account suspension.
-- **Credential Protection**: Credentials are not logged, exposed in error messages, or cached. 
-- **LinkedIn Rate Limits**: The client respects LinkedIn's own HTTP 429 responses and does not attempt to bypass CAPTCHAs or MFA.
-
-## Known Limitations
-- **Account Bans**: Relying on internal Voyager APIs with a personal `li_at` cookie carries a risk of LinkedIn flagging or restricting the account if request volume is too high.
-- **Endpoint Instability**: LinkedIn frequently updates its internal APIs. Changes to the `decorationId` or response JSON structure might require parser updates.
-- **Cache Staleness**: Due to the TTL cache, recent profile changes might not be instantly reflected in the API response.
+## ⚠️ Known Limitations
+- **Account Bans**: Relying on personal session cookies carries a risk of LinkedIn restricting the account if request volume is too high.
+- **Cache Staleness**: Due to the TTL cache, recent profile updates may take up to 1 hour to reflect in the API.

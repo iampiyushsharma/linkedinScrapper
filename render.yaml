@@ -1,0 +1,21 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Push to GitHub, then Render → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: linkedin-profile-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: LINKEDIN_LI_AT
+        sync: false
+      - key: LINKEDIN_JSESSIONID
+        sync: false
+      - key: RATE_LIMIT_DEFAULT
+        value: 10/minute
+      - key: PROFILE_CACHE_TTL
+        value: "3600"
+      - key: LINKEDIN_TIMEOUT
+        value: "15"

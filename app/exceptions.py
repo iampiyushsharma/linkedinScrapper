@@ -1,26 +1,33 @@
-# app/exceptions.py
+"""Typed exceptions. Each maps cleanly to one HTTP status in the route layer."""
 
-# --- LinkedIn Client Exceptions ---
+
+# --- LinkedIn client layer ---------------------------------------------------
 
 class LinkedInClientError(Exception):
-    """Base class for exceptions raised by the LinkedIn HTTP Client."""
-    pass
+    """Transient failure talking to LinkedIn (network error, 5xx). Retryable."""
+
 
 class LinkedInRateLimitError(LinkedInClientError):
-    """Raised when LinkedIn responds with a 429 Rate Limit Exceeded."""
-    pass
+    """LinkedIn returned HTTP 429."""
+
 
 class LinkedInAuthError(LinkedInClientError):
-    """Raised when LinkedIn responds with a 401 or 403 Authentication error."""
-    pass
+    """The session cookie is missing, expired, or rejected (401/403/999/redirect)."""
 
 
-# --- Profile Service Exceptions ---
+class LinkedInBlockedError(LinkedInClientError):
+    """LinkedIn served a challenge / CAPTCHA / non-JSON wall. Not retryable."""
+
+
+# --- Profile service layer -------------------------------------------------
 
 class ProfileServiceError(Exception):
-    """Base class for exceptions raised by the Profile Service."""
-    pass
+    """Generic upstream failure surfacing from the service."""
+
+
+class InvalidURLError(ProfileServiceError):
+    """The supplied string is not a LinkedIn personal-profile URL."""
+
 
 class ProfileNotFoundError(ProfileServiceError):
-    """Raised when a profile cannot be found or is inaccessible."""
-    pass
+    """Profile does not exist or is not visible to the session."""
